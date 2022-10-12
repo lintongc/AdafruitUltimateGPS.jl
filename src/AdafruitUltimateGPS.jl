@@ -44,6 +44,30 @@ function config(portname::String)
 end
 
 """
+function updateconfig()
+
+Remember: "There is a trade off with more data you want the GPS to output, the GPS baud 
+rate, Arduino buffer/processing capability and update rate!" 
+(from: https://learn.adafruit.com/adafruit-ultimate-gps/f-a-q)
+
+A matter needs to be noted when the power of device is removed, 
+any modified setting will be lost and reset to factory default setting.
+
+command for baudrate setting: "$PMTK251,57600*27<CR><LF>"
+Baudrate setting : 4800,9600 (default),14400,19200,38400,57600,115200
+
+command for update rate setting: "$PMTK220,100*2F<CR><LF>"
+1000(millisecond) = 1(sec)  1/1 = 1Hz (default)
+200(millisecond) = 0.2(sec) 1/0.2 = 5 Hz
+100(millisecond) = 0.1(sec) 1/0.1 = 10 Hz
+"""
+function updateconfig(port::Ptr{LibSerialPort.Lib.SPPort}, command::String)
+	
+    LibSerialPort.write(port,command)
+
+end
+
+"""
 function stream(port::Ptr{LibSerialPort.Lib.SPPort}, file::String)
 
 Read sensor at 1Hz frequency and stream data to data file. The function is blocking
@@ -171,6 +195,59 @@ function get_current_RMC()
         missing
     end
     return RMC
+end
+
+"""
+function decode_GGA(msg) 
+
+Decodes GGA message and return t, latitude, longitude,  satellite channel, and
+antenna altitude above/below mean-sea-level (unit:m) as a named tuple.
+
+```julia
+julia> using AdafruitUltimateGPS
+julia> msg = "\$GNGGA,183209.000,3547.1097,N,07838.5520,W,1,11,0.84,109.5,M,-33.0,M,,*41\r"
+julia> AdafruitUltimateGPS.decode_GGA(msg)
+(t = Time("18:32:09"), lat = 35.78516165415446, lon = -78.64253330230713,
+satellite = 11, altutide = 109.5)
+
+julia>
+```
+"""
+function decode_GGA(msg)
+    x = split(msg, ",")
+    t = Time(x[2], "HHMMSS.sss")
+    lat = parse(Float32, x[3][1:2]) + parse(Float32, x[3][3:end]) / 60.0
+    (x[4] == "N") || (lat = -lat)
+    lon = parse(Float32, x[5][1:3]) + parse(Float32, x[5][4:end]) / 60.0
+    (x[6] == "E") || (lon = -lon)
+    satellite = parse(Int,x[8])
+    altitude = parse(Float64,x[10])
+
+    return (t = t, lat = lat, lon = lon, satellite = satellite, altitude = altitude)
+end
+
+"""
+function decode_VTG(msg) 
+
+Decodes VTG message and return measured heading (unit: degree), measured horizontal speed
+(unit: km/hr) as a named tuple.
+
+```julia
+julia> using AdafruitUltimateGPS
+julia> msg = "\$GNVTG,354.82,T,,M,24.67,N,45.72,K,A*28\r"
+julia> AdafruitUltimateGPS.decode_VTG(msg)
+(heading = 354.82, speed = 45.72)
+
+julia>
+```
+"""
+function decode_VTG(msg)
+    x = split(msg, ",")
+    heading = null
+    (x[3] == "T") || (heading = x[2])
+    speed = x[9]
+
+    return (heading = heading, speed = speed)
 end
 
 end
